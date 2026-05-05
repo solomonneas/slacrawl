@@ -54,6 +54,12 @@ Run a one-shot desktop import:
 slacrawl sync --source desktop
 ```
 
+`wiretap` is the human-readable alias for desktop mode:
+
+```bash
+slacrawl sync --source wiretap
+```
+
 This will:
 
 1. snapshot the local Slack Desktop storage

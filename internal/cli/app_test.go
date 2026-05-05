@@ -114,6 +114,9 @@ func TestInitStatusAndSQL(t *testing.T) {
 	var status map[string]any
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &status))
 	require.Equal(t, float64(0), status["messages"])
+	profile := status["archive_profile"].(map[string]any)
+	require.Equal(t, "empty", profile["mode"])
+	require.Len(t, profile["sources"].([]any), 3)
 
 	stdout.Reset()
 	require.NoError(t, app.Run(ctx, []string{"--config", configPath, "--json", "sql", "select count(*) as messages from messages"}))
@@ -159,6 +162,8 @@ func TestDoctorReflectsDisabledSources(t *testing.T) {
 	require.Equal(t, false, tokens["user_enabled"])
 	require.Equal(t, false, tokens["bot_set"])
 	require.Equal(t, false, report["desktop_source"].(map[string]any)["available"])
+	profile := report["archive_profile"].(map[string]any)
+	require.Equal(t, "empty", profile["mode"])
 }
 
 func TestWatchFailsWhenDesktopDisabled(t *testing.T) {
@@ -224,6 +229,35 @@ func TestDoctorIncludesOperationalSyncState(t *testing.T) {
 	require.Equal(t, "T123", state["entity_id"])
 	shareState := report["share"].(map[string]any)
 	require.Equal(t, false, shareState["enabled"])
+	profile := report["archive_profile"].(map[string]any)
+	require.Equal(t, "bot", profile["mode"])
+}
+
+func TestSyncAcceptsWiretapSourceAlias(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := filepath.Join(tmp, "config.toml")
+	dbPath := filepath.Join(tmp, "slacrawl.db")
+
+	cfg := config.Default()
+	cfg.DBPath = dbPath
+	cfg.Slack.Desktop.Enabled = false
+	cfg.Slack.Desktop.Path = ""
+	require.NoError(t, cfg.Save(configPath))
+
+	var stdout bytes.Buffer
+	app := &App{
+		Stdout: &stdout,
+		Stderr: &stdout,
+	}
+
+	require.NoError(t, app.Run(context.Background(), []string{"--config", configPath, "--json", "sync", "--source", "wiretap"}))
+
+	var report map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &report))
+	profile := report["archive_profile"].(map[string]any)
+	require.Equal(t, "empty", profile["mode"])
+	desktop := report["summary"].(map[string]any)["desktop"].(map[string]any)
+	require.Equal(t, false, desktop["available"])
 }
 
 func TestWorkspaceFilteredReadCommands(t *testing.T) {
@@ -347,6 +381,7 @@ func TestStatusHumanOutputIsStructured(t *testing.T) {
 	require.Contains(t, out, "STATUS")
 	require.Contains(t, out, "workspaces")
 	require.Contains(t, out, "messages")
+	require.Contains(t, out, "Archive profile")
 	require.Contains(t, out, "Git share")
 	require.True(t, strings.Contains(out, "never") || strings.Contains(out, "last sync"))
 	require.NotContains(t, out, "map[]")
@@ -450,6 +485,7 @@ func TestCompletionBashOutput(t *testing.T) {
 	require.Contains(t, out, "report")
 	require.Contains(t, out, "--format")
 	require.Contains(t, out, "--kind")
+	require.Contains(t, out, "wiretap")
 }
 
 func TestCompletionZshOutput(t *testing.T) {
@@ -467,6 +503,7 @@ func TestCompletionZshOutput(t *testing.T) {
 	require.Contains(t, out, "report")
 	require.Contains(t, out, "--no-color")
 	require.Contains(t, out, "public_channel")
+	require.Contains(t, out, "wiretap")
 }
 
 func TestReportIncludesArchiveAndShareState(t *testing.T) {

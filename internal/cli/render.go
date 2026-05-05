@@ -81,7 +81,7 @@ func (a *App) printHelp() {
 	b.WriteString("  publish    Export a git-backed archive snapshot.\n")
 	b.WriteString("  subscribe  Configure a git-backed archive reader.\n")
 	b.WriteString("  update     Pull and import the latest git snapshot.\n")
-	b.WriteString("  sync       Run a one-shot crawl from api, desktop, or both.\n")
+	b.WriteString("  sync       Run a one-shot crawl from bot/api, wiretap/desktop, or both.\n")
 	b.WriteString("  import     Import a Slack export ZIP or directory.\n")
 	b.WriteString("  tail       Listen for live events through Socket Mode.\n")
 	b.WriteString("  watch      Refresh desktop-local state on an interval.\n")
@@ -101,7 +101,7 @@ func (a *App) printHelp() {
 	b.WriteString("  slacrawl digest --since 7d\n")
 	b.WriteString("  slacrawl analytics trends --weeks 4\n")
 	b.WriteString("  slacrawl subscribe --db ~/.slacrawl/slacrawl.db https://example.com/private/slacrawl-archive.git\n")
-	b.WriteString("  slacrawl sync --source api --latest-only\n")
+	b.WriteString("  slacrawl sync --source bot --latest-only\n")
 	b.WriteString("  slacrawl import ./my-export.zip --workspace T01234567\n")
 	b.WriteString("  slacrawl search incident\n")
 	b.WriteString("  slacrawl completion bash > /usr/local/etc/bash_completion.d/slacrawl\n")
@@ -370,12 +370,14 @@ func keyRank(key string) int {
 		return 5
 	case "desktop_source", "desktop":
 		return 6
-	case "fts_available":
+	case "archive_profile":
 		return 7
-	case "api_channel_skips":
+	case "fts_available":
 		return 8
-	case "tail_state":
+	case "api_channel_skips":
 		return 9
+	case "tail_state":
+		return 10
 	default:
 		return 100
 	}
@@ -657,6 +659,9 @@ func renderDoctorBlock(w *strings.Builder, value any) bool {
 		w.WriteString(shortValue(status["thread_state"]))
 		w.WriteByte('\n')
 	}
+	if profile, ok := report["archive_profile"].(map[string]any); ok {
+		renderArchiveProfileBlock(w, profile)
+	}
 	if shareState, ok := report["share"].(map[string]any); ok {
 		renderShareBlock(w, shareState, true)
 	}
@@ -722,6 +727,10 @@ func renderStatusBlock(w *strings.Builder, value any) bool {
 	w.WriteString(shortValue(report["thread_state"]))
 	w.WriteByte('\n')
 
+	if profile, ok := report["archive_profile"].(map[string]any); ok {
+		renderArchiveProfileBlock(w, profile)
+	}
+
 	if shareState, ok := report["share"].(map[string]any); ok {
 		renderShareBlock(w, shareState, true)
 	}
@@ -778,7 +787,40 @@ func renderSyncBlock(w *strings.Builder, title string, value any) bool {
 			}
 		}
 	}
+	if profile, ok := report["archive_profile"].(map[string]any); ok {
+		renderArchiveProfileBlock(w, profile)
+	}
 	return true
+}
+
+func renderArchiveProfileBlock(w *strings.Builder, profile map[string]any) {
+	w.WriteByte('\n')
+	w.WriteString(colorize(ansiCyan, "Archive profile"))
+	w.WriteByte('\n')
+	w.WriteString("  mode         ")
+	w.WriteString(shortValue(profile["mode"]))
+	w.WriteByte('\n')
+	sources, ok := profile["sources"].([]any)
+	if !ok || len(sources) == 0 {
+		return
+	}
+	for _, item := range sources {
+		source, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		detail := []string{}
+		if truthy(source["configured"]) {
+			detail = append(detail, "configured")
+		}
+		if last := shortValue(source["last_seen_at"]); last != "" {
+			detail = append(detail, "last "+last)
+		}
+		if messages := shortValue(source["messages"]); messages != "" && messages != "0" {
+			detail = append(detail, messages+" msgs")
+		}
+		writeCheck(w, shortValue(source["name"]), truthy(source["enabled"]), strings.Join(detail, ", "))
+	}
 }
 
 func renderReportBlock(w *strings.Builder, value any) bool {

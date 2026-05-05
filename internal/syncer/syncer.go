@@ -3,6 +3,8 @@ package syncer
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/vincentkoc/slacrawl/internal/config"
 	"github.com/vincentkoc/slacrawl/internal/slackapi"
@@ -17,6 +19,19 @@ const (
 	SourceDesktop Source = "desktop"
 	SourceAll     Source = "all"
 )
+
+func ParseSource(value string) (Source, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", string(SourceAPI), "bot":
+		return SourceAPI, nil
+	case string(SourceDesktop), "wiretap":
+		return SourceDesktop, nil
+	case string(SourceAll), "hybrid":
+		return SourceAll, nil
+	default:
+		return "", fmt.Errorf("unsupported source %q: use api, bot, desktop, wiretap, or all", value)
+	}
+}
 
 type Options struct {
 	Source      Source

@@ -82,10 +82,39 @@ Behavior:
 - each workspace automatically tries `SLACK_<WORKSPACE_ID>_BOT_TOKEN`, `SLACK_<WORKSPACE_ID>_APP_TOKEN`, and `SLACK_<WORKSPACE_ID>_USER_TOKEN`
 - top-level `enabled` flags are inherited, so you do not need to repeat `enabled = true` for every workspace
 - `bot_token_env`, `app_token_env`, and `user_token_env` are optional overrides when you do not want the default env naming convention
-- `sync --source api` without `--workspace` runs against every configured `[[workspaces]]` entry
+- `sync --source bot` without `--workspace` runs against every configured `[[workspaces]]` entry
 - `tail` without `--workspace` starts one live tail per configured `[[workspaces]]` entry
 - `search`, `messages`, `mentions`, `users`, and `channels` accept `--workspace` to filter the shared SQLite database
 - if `[[workspaces]]` is empty, the legacy top-level `[slack.*]` token config is used
+
+## Visibility Boundaries
+
+One config/database should represent one Slack visibility boundary: the messages visible to one bot/account/profile. Use ingestion sources to decide how that archive is populated:
+
+- `sync --source bot` is an alias for `sync --source api` and uses Slack bot/user tokens
+- `sync --source wiretap` is an alias for `sync --source desktop` and reads the local Slack Desktop cache
+- `sync --source all` runs token-backed sync first, then desktop enrichment
+- `[share]` backs up or restores the current DB; it is not a second Slack data source
+
+Keep company and personal Slack archives in separate configs, DBs, and git remotes:
+
+```toml
+# ~/.slacrawl/company.toml
+db_path = "~/.slacrawl/company.db"
+
+[share]
+remote = "git@github.com:your-org/company-slacrawl-archive.git"
+repo_path = "~/.slacrawl/company-share"
+```
+
+```toml
+# ~/.slacrawl/personal.toml
+db_path = "~/.slacrawl/personal.db"
+
+[share]
+remote = "git@github.com:your-user/personal-slacrawl-archive.git"
+repo_path = "~/.slacrawl/personal-share"
+```
 
 ## Git Archive Sharing
 

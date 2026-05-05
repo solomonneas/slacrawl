@@ -1,5 +1,7 @@
 version = 1
 workspace_id = ""
+# One config/database should represent one Slack visibility boundary.
+# Use separate config files and db_path values for company vs personal archives.
 db_path = "~/.slacrawl/slacrawl.db"
 cache_dir = "~/.slacrawl/cache"
 log_dir = "~/.slacrawl/logs"

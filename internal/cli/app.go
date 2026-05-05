@@ -251,6 +251,10 @@ func (a *App) runDoctor(ctx context.Context, configPath string, format OutputFor
 	if err != nil {
 		return err
 	}
+	archiveProfile, err := a.buildArchiveProfile(ctx, cfg, st)
+	if err != nil {
+		return err
+	}
 	shareState, err := a.buildShareState(ctx, cfg, st)
 	if err != nil {
 		return err
@@ -281,6 +285,7 @@ func (a *App) runDoctor(ctx context.Context, configPath string, format OutputFor
 		"slack_api":         diag,
 		"workspace_api":     workspaceAPI,
 		"desktop_source":    desktop,
+		"archive_profile":   archiveProfile,
 		"share":             shareState,
 		"api_channel_skips": channelSkips,
 		"tail_state":        tailState,
@@ -304,11 +309,15 @@ func (a *App) runStatus(ctx context.Context, configPath string, format OutputFor
 	if err != nil {
 		return err
 	}
+	archiveProfile, err := a.buildArchiveProfile(ctx, cfg, st)
+	if err != nil {
+		return err
+	}
 	shareState, err := a.buildShareState(ctx, cfg, st)
 	if err != nil {
 		return err
 	}
-	return a.writeOutput("Status", statusResponse{Status: status, Share: shareState}, format, true)
+	return a.writeOutput("Status", statusResponse{Status: status, ArchiveProfile: archiveProfile, Share: shareState}, format, true)
 }
 
 func (a *App) runSync(ctx context.Context, configPath string, args []string, format OutputFormat) error {
@@ -319,7 +328,7 @@ func (a *App) runSync(ctx context.Context, configPath string, args []string, for
 
 	fs := flag.NewFlagSet("sync", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
-	source := fs.String("source", "api", "api|desktop|all")
+	source := fs.String("source", "api", "api|bot|desktop|wiretap|all")
 	workspaceID := fs.String("workspace", "", "workspace id")
 	channels := fs.String("channels", "", "comma separated channel ids")
 	since := fs.String("since", "", "oldest slack ts or RFC3339 timestamp")
@@ -330,8 +339,12 @@ func (a *App) runSync(ctx context.Context, configPath string, args []string, for
 		return err
 	}
 
+	resolvedSource, err := syncer.ParseSource(*source)
+	if err != nil {
+		return err
+	}
 	runOptions := syncer.Options{
-		Source:      syncer.Source(*source),
+		Source:      resolvedSource,
 		WorkspaceID: coalesce(*workspaceID, cfg.WorkspaceID),
 		Channels:    csv(*channels),
 		Since:       *since,
@@ -357,9 +370,14 @@ func (a *App) runSync(ctx context.Context, configPath string, args []string, for
 	if err != nil {
 		return err
 	}
+	archiveProfile, err := a.buildArchiveProfile(ctx, cfg, st)
+	if err != nil {
+		return err
+	}
 	result := map[string]any{
-		"status":  status,
-		"summary": summary,
+		"status":          status,
+		"archive_profile": archiveProfile,
+		"summary":         summary,
 	}
 	return a.writeOutput("Sync", result, format, true)
 }
@@ -1123,7 +1141,23 @@ func shareOptions(repoPath, remote, branch string) (share.Options, error) {
 
 type statusResponse struct {
 	store.Status
-	Share shareResponse `json:"share"`
+	ArchiveProfile archiveProfileResponse `json:"archive_profile"`
+	Share          shareResponse          `json:"share"`
+}
+
+type archiveProfileResponse struct {
+	Mode    string           `json:"mode"`
+	Sources []sourceResponse `json:"sources"`
+}
+
+type sourceResponse struct {
+	Name        string `json:"name"`
+	Label       string `json:"label"`
+	Enabled     bool   `json:"enabled"`
+	Configured  bool   `json:"configured"`
+	LastSeenAt  string `json:"last_seen_at,omitempty"`
+	Messages    int64  `json:"messages"`
+	SyncEntries int64  `json:"sync_entries"`
 }
 
 type shareResponse struct {
@@ -1136,6 +1170,148 @@ type shareResponse struct {
 	LastImportAt            *time.Time `json:"last_import_at,omitempty"`
 	LastManifestGeneratedAt *time.Time `json:"last_manifest_generated_at,omitempty"`
 	NeedsImport             bool       `json:"needs_import"`
+}
+
+func (a *App) buildArchiveProfile(ctx context.Context, cfg config.Config, st *store.Store) (archiveProfileResponse, error) {
+	sources := []sourceResponse{
+		{
+			Name:       "bot",
+			Label:      "Slack API bot/user visibility",
+			Enabled:    cfg.Slack.Bot.Enabled || cfg.Slack.User.Enabled,
+			Configured: hasAPITokens(cfg),
+		},
+		{
+			Name:       "wiretap",
+			Label:      "Slack Desktop local cache visibility",
+			Enabled:    cfg.Slack.Desktop.Enabled,
+			Configured: strings.TrimSpace(cfg.Slack.Desktop.Path) != "",
+		},
+		{
+			Name:       "backup",
+			Label:      "Git archive backup/restore",
+			Enabled:    cfg.ShareEnabled(),
+			Configured: strings.TrimSpace(cfg.Share.Remote) != "",
+		},
+	}
+	index := map[string]int{}
+	for i := range sources {
+		index[sources[i].Name] = i
+	}
+
+	syncRows, err := st.QueryReadOnly(ctx, `
+select
+  case
+    when source_name in ('api-bot', 'api-user', 'tail') then 'bot'
+    when source_name = 'desktop' or source_name like 'desktop-%' then 'wiretap'
+    when source_name = 'share' then 'backup'
+    else source_name
+  end as source,
+  max(updated_at) as last_seen_at,
+  count(*) as sync_entries
+from sync_state
+where source_name != 'doctor'
+group by source
+`)
+	if err != nil {
+		return archiveProfileResponse{}, err
+	}
+	for _, row := range syncRows {
+		source := fmt.Sprint(row["source"])
+		i, ok := index[source]
+		if !ok {
+			continue
+		}
+		sources[i].LastSeenAt = fmt.Sprint(row["last_seen_at"])
+		sources[i].SyncEntries = int64Value(row["sync_entries"])
+	}
+
+	messageRows, err := st.QueryReadOnly(ctx, `
+select
+  case
+    when source_name in ('api-bot', 'api-user') then 'bot'
+    when source_name = 'desktop' or source_name like 'desktop-%' then 'wiretap'
+    when source_name = 'slack-export' then 'import'
+    else source_name
+  end as source,
+  count(*) as messages
+from messages
+group by source
+`)
+	if err != nil {
+		return archiveProfileResponse{}, err
+	}
+	importMessages := int64(0)
+	for _, row := range messageRows {
+		source := fmt.Sprint(row["source"])
+		if source == "import" {
+			importMessages += int64Value(row["messages"])
+			continue
+		}
+		i, ok := index[source]
+		if !ok {
+			continue
+		}
+		sources[i].Messages = int64Value(row["messages"])
+	}
+	if importMessages > 0 {
+		sources = append(sources, sourceResponse{
+			Name:       "import",
+			Label:      "Slack export import",
+			Enabled:    true,
+			Configured: true,
+			Messages:   importMessages,
+		})
+	}
+
+	return archiveProfileResponse{
+		Mode:    archiveMode(sources),
+		Sources: sources,
+	}, nil
+}
+
+func hasAPITokens(cfg config.Config) bool {
+	tokens := cfg.ResolveTokens()
+	if tokens.Bot != "" || tokens.User != "" {
+		return true
+	}
+	for _, workspaceID := range cfg.WorkspaceIDs() {
+		tokens := cfg.ResolveTokensForWorkspace(workspaceID)
+		if tokens.Bot != "" || tokens.User != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func archiveMode(sources []sourceResponse) string {
+	var bot, wiretap, backup, imported bool
+	for _, source := range sources {
+		hasData := source.Messages > 0 || source.LastSeenAt != "" || source.SyncEntries > 0
+		switch source.Name {
+		case "bot":
+			bot = hasData
+		case "wiretap":
+			wiretap = hasData
+		case "backup":
+			backup = hasData
+		case "import":
+			imported = hasData
+		}
+	}
+	switch {
+	case bot && wiretap:
+		return "hybrid"
+	case bot:
+		return "bot"
+	case wiretap:
+		return "wiretap"
+	case backup:
+		return "backup"
+	case imported:
+		return "import"
+	default:
+		return "empty"
+	}
 }
 
 func (a *App) buildShareState(ctx context.Context, cfg config.Config, st *store.Store) (shareResponse, error) {
@@ -1168,4 +1344,25 @@ func (a *App) buildShareState(ctx context.Context, cfg config.Config, st *store.
 	}
 	state.NeedsImport = share.NeedsImport(ctx, st, staleAfter)
 	return state, nil
+}
+
+func int64Value(value any) int64 {
+	switch typed := value.(type) {
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	case int32:
+		return int64(typed)
+	case float64:
+		return int64(typed)
+	case []byte:
+		parsed, _ := strconv.ParseInt(string(typed), 10, 64)
+		return parsed
+	case string:
+		parsed, _ := strconv.ParseInt(typed, 10, 64)
+		return parsed
+	default:
+		return 0
+	}
 }

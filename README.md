@@ -133,7 +133,7 @@ export SLACK_USER_TOKEN="xoxp-..."
 
 go run ./cmd/slacrawl init
 go run ./cmd/slacrawl doctor
-go run ./cmd/slacrawl sync --source api
+go run ./cmd/slacrawl sync --source bot
 go run ./cmd/slacrawl search --workspace T01234567 "incident"
 go run ./cmd/slacrawl analytics trends --weeks 4
 go run ./cmd/slacrawl tail --repair-every 30m
@@ -144,12 +144,23 @@ If you built the binary, replace `go run ./cmd/slacrawl` with `./bin/slacrawl`.
 
 `tail` is the live API side of the tool. `watch` is the recurring desktop-side refresh loop.
 
+## Visibility Model
+
+Treat one `slacrawl` config/database as one Slack visibility boundary. The archive should mean "what this bot/account/profile can see", not a blend of unrelated personal and company backups.
+
+- `--source bot` is an alias for `--source api`; it crawls Slack through configured bot/user tokens
+- `--source wiretap` is an alias for `--source desktop`; it reads the local Slack Desktop cache
+- `--source all` runs API first, then desktop enrichment
+- `[share]` is a backup/restore target for the current DB, not a second Slack source
+
+For separate company and personal archives, use separate configs with separate `db_path` and `[share].remote` values.
+
 Choose the path that matches your setup:
 
-- use `sync --source api` for normal incremental syncs
-- use `sync --source api --full` only when you want a deliberate full backfill
-- use `sync --source api --latest-only` when you only want fresh deltas on channels that already have local history
-- use `sync --source desktop` when you want local desktop recovery only
+- use `sync --source bot` for normal token-backed incremental syncs
+- use `sync --source bot --full` only when you want a deliberate full backfill
+- use `sync --source bot --latest-only` when you only want fresh deltas on channels that already have local history
+- use `sync --source wiretap` when you want local desktop recovery only
 - use `watch` when you want desktop-local state to refresh into SQLite continuously
 
 ## Commands
@@ -160,7 +171,7 @@ Choose the path that matches your setup:
 - `publish` exports the local SQLite archive into a git repo as compressed JSONL shards plus a manifest
 - `subscribe` configures a git-backed reader that can run without Slack credentials
 - `update` pulls and imports the latest git snapshot
-- `sync` performs a one-shot crawl from API, desktop, or both
+- `sync` performs a one-shot crawl from bot/API, wiretap/desktop, or both
 - `import` imports a Slack export ZIP or extracted export directory
 - `tail` listens for live events through Socket Mode, including one tail per configured workspace
 - `watch` refreshes desktop-local state on a schedule
@@ -268,7 +279,7 @@ user_token_env = "SLACK_CLIENT_USER_TOKEN"
 
 By default, each workspace entry automatically looks for `SLACK_<WORKSPACE_ID>_BOT_TOKEN`, `SLACK_<WORKSPACE_ID>_APP_TOKEN`, and `SLACK_<WORKSPACE_ID>_USER_TOKEN`, so you only need the `id` in the common case. Top-level `enabled` flags still apply globally, which avoids repeating `enabled = true` per workspace.
 
-Without `--workspace`, `sync --source api` and `tail` fan out across every configured workspace entry. Read commands such as `search`, `messages`, `mentions`, `users`, and `channels` accept `--workspace` to scope the shared local database when needed.
+Without `--workspace`, `sync --source bot` and `tail` fan out across every configured workspace entry. Read commands such as `search`, `messages`, `mentions`, `users`, and `channels` accept `--workspace` to scope the shared local database when needed.
 
 ## Git Archive Sharing
 
@@ -297,7 +308,7 @@ Behavior:
 - pass `--db` to `subscribe` when you want the reader archive to land in a non-default SQLite path
 - `update` pulls and re-imports only when the manifest changes
 - `status`, `search`, `messages`, `mentions`, `sql`, `users`, `channels`, and `report` auto-refresh stale git snapshots before reading when `auto_update = true`
-- `sync --source api` and `sync --source all` warm from the git snapshot before hitting Slack when a share remote is configured
+- `sync --source bot` and `sync --source all` warm from the git snapshot before hitting Slack when a share remote is configured
 - `status` and `doctor` surface the current git-share repo, last import time, and whether the local snapshot is stale
 
 ### `publish`
@@ -359,7 +370,7 @@ Typical publish / subscribe flow:
 
 ```bash
 # publisher
-go run ./cmd/slacrawl sync --source api --latest-only
+go run ./cmd/slacrawl sync --source bot --latest-only
 go run ./cmd/slacrawl publish --remote /path/to/private/slacrawl-archive.git --push
 
 # subscriber
@@ -386,11 +397,31 @@ Desktop config notes:
 - set a custom absolute path if Slack Desktop data lives elsewhere
 - set `[slack.bot]`, `[slack.app]`, or `[slack.user]` `enabled = false` to ignore that token source entirely
 
+Separate visibility profiles should use separate config files:
+
+```toml
+# ~/.slacrawl/company.toml
+db_path = "~/.slacrawl/company.db"
+
+[share]
+remote = "git@github.com:your-org/company-slacrawl-archive.git"
+repo_path = "~/.slacrawl/company-share"
+```
+
+```toml
+# ~/.slacrawl/personal.toml
+db_path = "~/.slacrawl/personal.db"
+
+[share]
+remote = "git@github.com:your-user/personal-slacrawl-archive.git"
+repo_path = "~/.slacrawl/personal-share"
+```
+
 ## Typical Workflow
 
 ```bash
 go run ./cmd/slacrawl init
-go run ./cmd/slacrawl sync --source api
+go run ./cmd/slacrawl sync --source bot
 go run ./cmd/slacrawl status
 go run ./cmd/slacrawl report
 go run ./cmd/slacrawl digest --since 7d
