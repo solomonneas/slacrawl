@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/vincentkoc/slacrawl/internal/config"
 	"github.com/vincentkoc/slacrawl/internal/report"
 	"github.com/vincentkoc/slacrawl/internal/share"
@@ -54,89 +55,132 @@ func (a *App) nowUTC() time.Time {
 }
 
 func (a *App) Run(ctx context.Context, args []string) error {
-	global := flag.NewFlagSet("slacrawl", flag.ContinueOnError)
-	global.SetOutput(a.Stderr)
-	global.Usage = func() {}
-	configPath := global.String("config", "", "config path")
-	format := global.String("format", string(FormatText), "output format: text|json|log")
-	jsonOut := global.Bool("json", false, "json output")
-	noColor := global.Bool("no-color", false, "disable ANSI color in text output")
-	if err := global.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			a.setColorEnabled(FormatText, *noColor)
-			a.printHelp()
-			return nil
-		}
+	if len(args) == 0 || rootHelpRequested(args, "config", "format") {
+		a.setColorEnabled(FormatText, false)
+		a.printHelp()
+		return nil
+	}
+	var global slacrawlRootArgs
+	if err := parseKongArgs(&global, args, "slacrawl", a.Stdout, a.Stderr); err != nil {
 		return err
 	}
-
-	rest := global.Args()
-	if len(rest) == 0 {
-		a.setColorEnabled(FormatText, *noColor)
+	rest := global.Args
+	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h" {
+		a.setColorEnabled(FormatText, global.NoColor)
 		a.printHelp()
 		return nil
 	}
 
-	if *configPath == "" {
+	configPath := global.Config
+	if configPath == "" {
 		path, err := config.DefaultConfigPath()
 		if err != nil {
 			return err
 		}
-		*configPath = path
+		configPath = path
 	}
 
-	outputFormat, err := resolveOutputFormat(*format, *jsonOut)
+	outputFormat, err := resolveOutputFormat(global.Format, global.JSON)
 	if err != nil {
 		return err
 	}
-	a.configPath = *configPath
+	a.configPath = configPath
 	a.outputFormat = outputFormat
-	a.setColorEnabled(outputFormat, *noColor)
+	a.setColorEnabled(outputFormat, global.NoColor)
 
 	switch rest[0] {
 	case "init":
-		return a.runInit(*configPath, rest[1:], outputFormat)
+		return a.runInit(configPath, rest[1:], outputFormat)
 	case "doctor":
-		return a.runDoctor(ctx, *configPath, outputFormat)
+		return a.runDoctor(ctx, configPath, outputFormat)
 	case "report":
-		return a.runReport(ctx, *configPath, outputFormat)
+		return a.runReport(ctx, configPath, outputFormat)
 	case "digest":
-		return a.runDigest(ctx, *configPath, rest[1:], outputFormat)
+		return a.runDigest(ctx, configPath, rest[1:], outputFormat)
 	case "analytics":
-		return a.runAnalytics(ctx, *configPath, rest[1:], outputFormat)
+		return a.runAnalytics(ctx, configPath, rest[1:], outputFormat)
 	case "publish":
-		return a.runPublish(ctx, *configPath, rest[1:], outputFormat)
+		return a.runPublish(ctx, configPath, rest[1:], outputFormat)
 	case "subscribe":
-		return a.runSubscribe(ctx, *configPath, rest[1:], outputFormat)
+		return a.runSubscribe(ctx, configPath, rest[1:], outputFormat)
 	case "update":
-		return a.runUpdate(ctx, *configPath, rest[1:], outputFormat)
+		return a.runUpdate(ctx, configPath, rest[1:], outputFormat)
 	case "status":
-		return a.runStatus(ctx, *configPath, outputFormat)
+		return a.runStatus(ctx, configPath, outputFormat)
 	case "sync":
-		return a.runSync(ctx, *configPath, rest[1:], outputFormat)
+		return a.runSync(ctx, configPath, rest[1:], outputFormat)
 	case "import":
 		return a.runImport(ctx, rest[1:])
 	case "search":
-		return a.runSearch(ctx, *configPath, rest[1:], outputFormat)
+		return a.runSearch(ctx, configPath, rest[1:], outputFormat)
 	case "messages":
-		return a.runMessages(ctx, *configPath, rest[1:], outputFormat)
+		return a.runMessages(ctx, configPath, rest[1:], outputFormat)
 	case "mentions":
-		return a.runMentions(ctx, *configPath, rest[1:], outputFormat)
+		return a.runMentions(ctx, configPath, rest[1:], outputFormat)
 	case "sql":
-		return a.runSQL(ctx, *configPath, rest[1:], outputFormat)
+		return a.runSQL(ctx, configPath, rest[1:], outputFormat)
 	case "users":
-		return a.runUsers(ctx, *configPath, rest[1:], outputFormat)
+		return a.runUsers(ctx, configPath, rest[1:], outputFormat)
 	case "channels":
-		return a.runChannels(ctx, *configPath, rest[1:], outputFormat)
+		return a.runChannels(ctx, configPath, rest[1:], outputFormat)
 	case "completion":
 		return a.runCompletion(rest[1:])
 	case "tail":
-		return a.runTail(ctx, *configPath, rest[1:])
+		return a.runTail(ctx, configPath, rest[1:])
 	case "watch":
-		return a.runWatch(ctx, *configPath, rest[1:], outputFormat)
+		return a.runWatch(ctx, configPath, rest[1:], outputFormat)
 	default:
 		return fmt.Errorf("unknown command: %s", rest[0])
 	}
+}
+
+type slacrawlRootArgs struct {
+	Config  string   `help:"Config path."`
+	Format  string   `default:"text" help:"Output format: text, json, or log."`
+	JSON    bool     `name:"json" help:"Compatibility alias for --format json."`
+	NoColor bool     `name:"no-color" help:"Disable ANSI color in text output."`
+	Args    []string `arg:"" optional:"" passthrough:"partial" name:"command" help:"Command and arguments."`
+}
+
+func rootHelpRequested(args []string, valueFlags ...string) bool {
+	valueFlagSet := make(map[string]struct{}, len(valueFlags))
+	for _, flag := range valueFlags {
+		valueFlagSet[flag] = struct{}{}
+	}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--help" || arg == "-h" || (arg == "help" && i == len(args)-1) {
+			return true
+		}
+		if !strings.HasPrefix(arg, "-") {
+			return false
+		}
+		if strings.HasPrefix(arg, "--") {
+			name := strings.TrimPrefix(arg, "--")
+			if before, _, ok := strings.Cut(name, "="); ok {
+				name = before
+			} else if _, ok := valueFlagSet[name]; ok {
+				i++
+			}
+		}
+	}
+	return false
+}
+
+func parseKongArgs(target any, args []string, name string, stdout, stderr io.Writer, options ...kong.Option) error {
+	opts := []kong.Option{
+		kong.Name(name),
+		kong.NoDefaultHelp(),
+		kong.Writers(stdout, stderr),
+		kong.Exit(func(int) {}),
+	}
+	opts = append(opts, options...)
+	parser, err := kong.New(target, opts...)
+	if err != nil {
+		return err
+	}
+	_, err = parser.Parse(args)
+	return err
 }
 
 func (a *App) setColorEnabled(format OutputFormat, noColor bool) {
@@ -383,25 +427,24 @@ func (a *App) runSync(ctx context.Context, configPath string, args []string, for
 }
 
 func (a *App) runSearch(ctx context.Context, configPath string, args []string, format OutputFormat) error {
+	if hasHelpArg(args) {
+		printSearchUsage(a.Stdout)
+		return nil
+	}
+	var parsed slacrawlSearchArgs
+	if err := parseKongArgs(&parsed, normalizeSingleDashLongFlags(args, "workspace", "limit"), "slacrawl search", a.Stdout, a.Stderr); err != nil {
+		return err
+	}
 	cfg, err := loadConfig(configPath)
 	if err != nil {
 		return err
-	}
-	fs := flag.NewFlagSet("search", flag.ContinueOnError)
-	fs.SetOutput(a.Stderr)
-	workspaceID := fs.String("workspace", "", "workspace id")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if fs.NArg() == 0 {
-		return errors.New("search query required")
 	}
 	st, err := a.openReadableStore(ctx, cfg)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = st.Close() }()
-	results, err := st.Search(ctx, coalesce(*workspaceID, cfg.WorkspaceID), strings.Join(fs.Args(), " "), 50)
+	results, err := st.Search(ctx, coalesce(parsed.Workspace, cfg.WorkspaceID), strings.Join(parsed.Query, " "), store.RequireLimit(parsed.Limit))
 	if err != nil {
 		return err
 	}
@@ -409,17 +452,16 @@ func (a *App) runSearch(ctx context.Context, configPath string, args []string, f
 }
 
 func (a *App) runMessages(ctx context.Context, configPath string, args []string, format OutputFormat) error {
-	cfg, err := loadConfig(configPath)
-	if err != nil {
+	if hasHelpArg(args) {
+		printMessagesUsage(a.Stdout)
+		return nil
+	}
+	var parsed slacrawlMessagesArgs
+	if err := parseKongArgs(&parsed, normalizeSingleDashLongFlags(args, "workspace", "channel", "author", "limit"), "slacrawl messages", a.Stdout, a.Stderr); err != nil {
 		return err
 	}
-	fs := flag.NewFlagSet("messages", flag.ContinueOnError)
-	fs.SetOutput(a.Stderr)
-	workspaceID := fs.String("workspace", "", "workspace id")
-	channelID := fs.String("channel", "", "channel id")
-	userID := fs.String("author", "", "user id")
-	limit := fs.Int("limit", 50, "row limit")
-	if err := fs.Parse(args); err != nil {
+	cfg, err := loadConfig(configPath)
+	if err != nil {
 		return err
 	}
 	st, err := a.openReadableStore(ctx, cfg)
@@ -427,7 +469,7 @@ func (a *App) runMessages(ctx context.Context, configPath string, args []string,
 		return err
 	}
 	defer func() { _ = st.Close() }()
-	results, err := st.Messages(ctx, coalesce(*workspaceID, cfg.WorkspaceID), *channelID, *userID, store.RequireLimit(*limit))
+	results, err := st.Messages(ctx, coalesce(parsed.Workspace, cfg.WorkspaceID), parsed.Channel, parsed.Author, store.RequireLimit(parsed.Limit))
 	if err != nil {
 		return err
 	}
@@ -460,11 +502,19 @@ func (a *App) runMentions(ctx context.Context, configPath string, args []string,
 }
 
 func (a *App) runSQL(ctx context.Context, configPath string, args []string, format OutputFormat) error {
+	if hasHelpArg(args) {
+		printSQLUsage(a.Stdout)
+		return nil
+	}
+	var parsed slacrawlSQLArgs
+	if err := parseKongArgs(&parsed, args, "slacrawl sql", a.Stdout, a.Stderr); err != nil {
+		return err
+	}
 	cfg, err := loadConfig(configPath)
 	if err != nil {
 		return err
 	}
-	query := strings.TrimSpace(strings.Join(args, " "))
+	query := strings.TrimSpace(strings.Join(parsed.Query, " "))
 	if query == "" {
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
@@ -485,6 +535,23 @@ func (a *App) runSQL(ctx context.Context, configPath string, args []string, form
 		return err
 	}
 	return a.writeOutput("SQL", results, format, false)
+}
+
+type slacrawlSearchArgs struct {
+	Workspace string   `help:"Workspace id."`
+	Limit     int      `default:"50" help:"Row limit."`
+	Query     []string `arg:"" name:"query" help:"Search query."`
+}
+
+type slacrawlMessagesArgs struct {
+	Workspace string `help:"Workspace id."`
+	Channel   string `help:"Channel id."`
+	Author    string `help:"User id."`
+	Limit     int    `default:"50" help:"Row limit."`
+}
+
+type slacrawlSQLArgs struct {
+	Query []string `arg:"" optional:"" passthrough:"all" name:"query" help:"Read-only SQL query."`
 }
 
 func (a *App) runUsers(ctx context.Context, configPath string, args []string, format OutputFormat) error {
@@ -1344,6 +1411,69 @@ func (a *App) buildShareState(ctx context.Context, cfg config.Config, st *store.
 	}
 	state.NeedsImport = share.NeedsImport(ctx, st, staleAfter)
 	return state, nil
+}
+
+func hasHelpArg(args []string) bool {
+	for _, arg := range args {
+		if arg == "help" || arg == "--help" || arg == "-h" {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeSingleDashLongFlags(args []string, names ...string) []string {
+	allowed := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		allowed[name] = struct{}{}
+	}
+	out := make([]string, len(args))
+	for i, arg := range args {
+		if strings.HasPrefix(arg, "--") || !strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "-=") {
+			out[i] = arg
+			continue
+		}
+		name := strings.TrimPrefix(arg, "-")
+		if before, _, ok := strings.Cut(name, "="); ok {
+			name = before
+		}
+		if _, ok := allowed[name]; ok {
+			out[i] = "-" + arg
+			continue
+		}
+		out[i] = arg
+	}
+	return out
+}
+
+func printSearchUsage(w io.Writer) {
+	_, _ = fmt.Fprint(w, `Usage:
+  slacrawl search [flags] <query>
+
+Flags:
+  -workspace string  workspace id
+  -limit int         row limit (default 50)
+`)
+}
+
+func printMessagesUsage(w io.Writer) {
+	_, _ = fmt.Fprint(w, `Usage:
+  slacrawl messages [flags]
+
+Flags:
+  -workspace string  workspace id
+  -channel string    channel id
+  -author string     user id
+  -limit int         row limit (default 50)
+`)
+}
+
+func printSQLUsage(w io.Writer) {
+	_, _ = fmt.Fprint(w, `Usage:
+  slacrawl sql <select query>
+
+Runs a read-only SELECT query against the local archive.
+`)
 }
 
 func int64Value(value any) int64 {

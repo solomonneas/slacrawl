@@ -3,6 +3,7 @@ module github.com/vincentkoc/slacrawl
 go 1.25.0
 
 require (
+	github.com/alecthomas/kong v1.15.0
 	github.com/golang/snappy v1.0.0
 	github.com/pelletier/go-toml/v2 v2.3.1
 	github.com/slack-go/slack v0.23.0

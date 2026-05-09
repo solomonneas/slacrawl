@@ -1,0 +1,11 @@
+# Changelog
+
+## 0.5.1 - Unreleased
+
+### Changes
+
+- Moved top-level CLI parsing and the `search`, `messages`, and `sql` read commands onto Kong while preserving existing output and config behavior.
+
+### Fixes
+
+- `search --help`, `messages --help`, and `sql --help` now print command help without loading config, and `search --limit N` supports bounded result sets.

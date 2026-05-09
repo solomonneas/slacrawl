@@ -353,6 +353,23 @@ func TestHelpIncludesBannerAndUsage(t *testing.T) {
 	require.Contains(t, out, "--no-color")
 }
 
+func TestSubcommandHelpDoesNotLoadConfig(t *testing.T) {
+	for _, args := range [][]string{
+		{"--config", filepath.Join(t.TempDir(), "missing.toml"), "search", "--help"},
+		{"--config", filepath.Join(t.TempDir(), "missing.toml"), "messages", "--help"},
+		{"--config", filepath.Join(t.TempDir(), "missing.toml"), "sql", "--help"},
+	} {
+		var stdout, stderr bytes.Buffer
+		app := &App{
+			Stdout: &stdout,
+			Stderr: &stderr,
+		}
+		require.NoError(t, app.Run(context.Background(), args), "args=%v", args)
+		require.Contains(t, stdout.String(), "Usage:", "args=%v", args)
+		require.Empty(t, stderr.String(), "args=%v", args)
+	}
+}
+
 func mustTime(t *testing.T, value string) time.Time {
 	t.Helper()
 	parsed, err := time.Parse(time.RFC3339, value)
