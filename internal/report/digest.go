@@ -122,7 +122,7 @@ select
 	coalesce(c.kind, '') as kind,
 	count(*) as messages,
 	count(distinct case when m.thread_ts != '' and m.thread_ts = m.ts then m.ts else null end) as threads,
-	count(distinct nullif(m.user_id, '')) as active_authors
+	count(distinct case when nullif(m.user_id, '') is not null then m.workspace_id || '|' || m.user_id end) as active_authors
 from messages m
 left join channels c on c.id = m.channel_id and c.workspace_id = m.workspace_id
 where m.ts not like 'draft:%'
@@ -222,7 +222,7 @@ select
 	count(*) as messages,
 	count(distinct case when m.thread_ts != '' and m.thread_ts = m.ts then m.ts else null end) as threads,
 	count(distinct m.workspace_id || '|' || m.channel_id) as channels,
-	count(distinct nullif(m.user_id, '')) as active_authors
+	count(distinct case when nullif(m.user_id, '') is not null then m.workspace_id || '|' || m.user_id end) as active_authors
 from messages m
 left join channels c on c.id = m.channel_id and c.workspace_id = m.workspace_id
 where m.ts not like 'draft:%'

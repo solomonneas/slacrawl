@@ -15,6 +15,7 @@
 - `analytics --help`, `analytics -h`, and `analytics help` now print analytics subcommand usage.
 - `analytics quiet` and `analytics trends` now reject unexpected positional arguments instead of ignoring them.
 - Digest reports now exclude messages after the advertised `until` timestamp.
+- Digest totals now count active authors per workspace when aggregating multiple workspaces.
 - `make clean` now removes custom `BINARY` and `COMPLETION_DIR` outputs.
 - Indexed mentions when a live deleted-message event creates a tombstone row before the original message was archived.
 - Preserved archived reply and file metadata when live deleted-message events mark an existing message deleted.

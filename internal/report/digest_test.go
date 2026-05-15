@@ -130,6 +130,32 @@ func TestBuildDigest(t *testing.T) {
 	})
 }
 
+func TestBuildDigestCountsActiveAuthorsPerWorkspace(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "digest-authors.db")
+	st, err := store.Open(dbPath)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, st.Close()) }()
+
+	ctx := context.Background()
+	now := time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC)
+	for _, workspaceID := range []string{"T1", "T2"} {
+		require.NoError(t, st.UpsertWorkspace(ctx, store.Workspace{ID: workspaceID, Name: workspaceID, RawJSON: "{}", UpdatedAt: now}))
+		require.NoError(t, st.UpsertChannel(ctx, store.Channel{ID: "C-" + workspaceID, WorkspaceID: workspaceID, Name: "general", Kind: "public_channel", RawJSON: "{}", UpdatedAt: now}))
+		require.NoError(t, st.UpsertUser(ctx, store.User{ID: "U1", WorkspaceID: workspaceID, Name: "same-id", RawJSON: "{}", UpdatedAt: now}))
+		addMsg(t, ctx, st, "C-"+workspaceID, tsEpoch(now.Add(-time.Hour), 100), workspaceID, "U1", "", "hello")
+	}
+
+	d, err := BuildDigest(ctx, st, DigestOptions{Now: now})
+	require.NoError(t, err)
+	require.Equal(t, 2, d.Totals.ActiveAuthors)
+	require.Equal(t, 2, d.Totals.Channels)
+
+	d, err = BuildDigest(ctx, st, DigestOptions{Now: now, WorkspaceID: "T1"})
+	require.NoError(t, err)
+	require.Equal(t, 1, d.Totals.ActiveAuthors)
+	require.Equal(t, 1, d.Totals.Channels)
+}
+
 func TestHumanDuration(t *testing.T) {
 	cases := []struct {
 		in   time.Duration
