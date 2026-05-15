@@ -492,27 +492,111 @@ limit ?
 }
 
 func (s *Store) Messages(ctx context.Context, workspaceID string, channelID string, userID string, limit int) ([]MessageRow, error) {
-	rows, err := s.q.ListMessages(ctx, storedb.ListMessagesParams{
-		WorkspaceID: workspaceID,
-		ChannelID:   channelID,
-		UserID:      userID,
-		Limit:       int64(limit),
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]MessageRow, 0, len(rows))
-	for _, row := range rows {
+	out := make([]MessageRow, 0)
+	appendRow := func(workspaceID, channelID, ts, userID, text, normalizedText, threadTS, subtype string) {
 		out = append(out, MessageRow{
-			WorkspaceID:    row.WorkspaceID,
-			ChannelID:      row.ChannelID,
-			TS:             row.Ts,
-			UserID:         row.UserID,
-			Text:           row.Text,
-			NormalizedText: row.NormalizedText,
-			ThreadTS:       row.ThreadTs,
-			Subtype:        row.Subtype,
+			WorkspaceID:    workspaceID,
+			ChannelID:      channelID,
+			TS:             ts,
+			UserID:         userID,
+			Text:           text,
+			NormalizedText: normalizedText,
+			ThreadTS:       threadTS,
+			Subtype:        subtype,
 		})
+	}
+
+	switch {
+	case workspaceID != "" && channelID != "" && userID != "":
+		rows, err := s.q.ListMessagesByWorkspaceChannelUser(ctx, storedb.ListMessagesByWorkspaceChannelUserParams{
+			WorkspaceID: workspaceID,
+			ChannelID:   channelID,
+			UserID:      dbText(userID),
+			Limit:       int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			appendRow(row.WorkspaceID, row.ChannelID, row.Ts, row.UserID, row.Text, row.NormalizedText, row.ThreadTs, row.Subtype)
+		}
+	case workspaceID != "" && channelID != "":
+		rows, err := s.q.ListMessagesByWorkspaceChannel(ctx, storedb.ListMessagesByWorkspaceChannelParams{
+			WorkspaceID: workspaceID,
+			ChannelID:   channelID,
+			Limit:       int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			appendRow(row.WorkspaceID, row.ChannelID, row.Ts, row.UserID, row.Text, row.NormalizedText, row.ThreadTs, row.Subtype)
+		}
+	case workspaceID != "" && userID != "":
+		rows, err := s.q.ListMessagesByWorkspaceUser(ctx, storedb.ListMessagesByWorkspaceUserParams{
+			WorkspaceID: workspaceID,
+			UserID:      dbText(userID),
+			Limit:       int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			appendRow(row.WorkspaceID, row.ChannelID, row.Ts, row.UserID, row.Text, row.NormalizedText, row.ThreadTs, row.Subtype)
+		}
+	case channelID != "" && userID != "":
+		rows, err := s.q.ListMessagesByChannelUser(ctx, storedb.ListMessagesByChannelUserParams{
+			ChannelID: channelID,
+			UserID:    dbText(userID),
+			Limit:     int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			appendRow(row.WorkspaceID, row.ChannelID, row.Ts, row.UserID, row.Text, row.NormalizedText, row.ThreadTs, row.Subtype)
+		}
+	case workspaceID != "":
+		rows, err := s.q.ListMessagesByWorkspace(ctx, storedb.ListMessagesByWorkspaceParams{
+			WorkspaceID: workspaceID,
+			Limit:       int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			appendRow(row.WorkspaceID, row.ChannelID, row.Ts, row.UserID, row.Text, row.NormalizedText, row.ThreadTs, row.Subtype)
+		}
+	case channelID != "":
+		rows, err := s.q.ListMessagesByChannel(ctx, storedb.ListMessagesByChannelParams{
+			ChannelID: channelID,
+			Limit:     int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			appendRow(row.WorkspaceID, row.ChannelID, row.Ts, row.UserID, row.Text, row.NormalizedText, row.ThreadTs, row.Subtype)
+		}
+	case userID != "":
+		rows, err := s.q.ListMessagesByUser(ctx, storedb.ListMessagesByUserParams{
+			UserID: dbText(userID),
+			Limit:  int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			appendRow(row.WorkspaceID, row.ChannelID, row.Ts, row.UserID, row.Text, row.NormalizedText, row.ThreadTs, row.Subtype)
+		}
+	default:
+		rows, err := s.q.ListMessagesAll(ctx, int64(limit))
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			appendRow(row.WorkspaceID, row.ChannelID, row.Ts, row.UserID, row.Text, row.NormalizedText, row.ThreadTs, row.Subtype)
+		}
 	}
 	return out, nil
 }

@@ -303,24 +303,14 @@ func (q *Queries) ListMentions(ctx context.Context, arg ListMentionsParams) ([]L
 	return items, nil
 }
 
-const listMessages = `-- name: ListMessages :many
+const listMessagesAll = `-- name: ListMessagesAll :many
 select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
 from messages
-where (?1 = '' or workspace_id = ?1)
-  and (?2 = '' or channel_id = ?2)
-  and (?3 = '' or user_id = ?3)
 order by ts desc
-limit ?4
+limit ?1
 `
 
-type ListMessagesParams struct {
-	WorkspaceID interface{} `json:"workspace_id"`
-	ChannelID   interface{} `json:"channel_id"`
-	UserID      interface{} `json:"user_id"`
-	Limit       int64       `json:"limit"`
-}
-
-type ListMessagesRow struct {
+type ListMessagesAllRow struct {
 	WorkspaceID    string `json:"workspace_id"`
 	ChannelID      string `json:"channel_id"`
 	Ts             string `json:"ts"`
@@ -331,8 +321,352 @@ type ListMessagesRow struct {
 	Subtype        string `json:"subtype"`
 }
 
-func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]ListMessagesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listMessages,
+func (q *Queries) ListMessagesAll(ctx context.Context, limit int64) ([]ListMessagesAllRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesAll, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMessagesAllRow
+	for rows.Next() {
+		var i ListMessagesAllRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.ChannelID,
+			&i.Ts,
+			&i.UserID,
+			&i.Text,
+			&i.NormalizedText,
+			&i.ThreadTs,
+			&i.Subtype,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessagesByChannel = `-- name: ListMessagesByChannel :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where channel_id = ?1
+order by ts desc
+limit ?2
+`
+
+type ListMessagesByChannelParams struct {
+	ChannelID string `json:"channel_id"`
+	Limit     int64  `json:"limit"`
+}
+
+type ListMessagesByChannelRow struct {
+	WorkspaceID    string `json:"workspace_id"`
+	ChannelID      string `json:"channel_id"`
+	Ts             string `json:"ts"`
+	UserID         string `json:"user_id"`
+	Text           string `json:"text"`
+	NormalizedText string `json:"normalized_text"`
+	ThreadTs       string `json:"thread_ts"`
+	Subtype        string `json:"subtype"`
+}
+
+func (q *Queries) ListMessagesByChannel(ctx context.Context, arg ListMessagesByChannelParams) ([]ListMessagesByChannelRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesByChannel, arg.ChannelID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMessagesByChannelRow
+	for rows.Next() {
+		var i ListMessagesByChannelRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.ChannelID,
+			&i.Ts,
+			&i.UserID,
+			&i.Text,
+			&i.NormalizedText,
+			&i.ThreadTs,
+			&i.Subtype,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessagesByChannelUser = `-- name: ListMessagesByChannelUser :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where channel_id = ?1
+  and user_id = ?2
+order by ts desc
+limit ?3
+`
+
+type ListMessagesByChannelUserParams struct {
+	ChannelID string         `json:"channel_id"`
+	UserID    sql.NullString `json:"user_id"`
+	Limit     int64          `json:"limit"`
+}
+
+type ListMessagesByChannelUserRow struct {
+	WorkspaceID    string `json:"workspace_id"`
+	ChannelID      string `json:"channel_id"`
+	Ts             string `json:"ts"`
+	UserID         string `json:"user_id"`
+	Text           string `json:"text"`
+	NormalizedText string `json:"normalized_text"`
+	ThreadTs       string `json:"thread_ts"`
+	Subtype        string `json:"subtype"`
+}
+
+func (q *Queries) ListMessagesByChannelUser(ctx context.Context, arg ListMessagesByChannelUserParams) ([]ListMessagesByChannelUserRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesByChannelUser, arg.ChannelID, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMessagesByChannelUserRow
+	for rows.Next() {
+		var i ListMessagesByChannelUserRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.ChannelID,
+			&i.Ts,
+			&i.UserID,
+			&i.Text,
+			&i.NormalizedText,
+			&i.ThreadTs,
+			&i.Subtype,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessagesByUser = `-- name: ListMessagesByUser :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where user_id = ?1
+order by ts desc
+limit ?2
+`
+
+type ListMessagesByUserParams struct {
+	UserID sql.NullString `json:"user_id"`
+	Limit  int64          `json:"limit"`
+}
+
+type ListMessagesByUserRow struct {
+	WorkspaceID    string `json:"workspace_id"`
+	ChannelID      string `json:"channel_id"`
+	Ts             string `json:"ts"`
+	UserID         string `json:"user_id"`
+	Text           string `json:"text"`
+	NormalizedText string `json:"normalized_text"`
+	ThreadTs       string `json:"thread_ts"`
+	Subtype        string `json:"subtype"`
+}
+
+func (q *Queries) ListMessagesByUser(ctx context.Context, arg ListMessagesByUserParams) ([]ListMessagesByUserRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesByUser, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMessagesByUserRow
+	for rows.Next() {
+		var i ListMessagesByUserRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.ChannelID,
+			&i.Ts,
+			&i.UserID,
+			&i.Text,
+			&i.NormalizedText,
+			&i.ThreadTs,
+			&i.Subtype,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessagesByWorkspace = `-- name: ListMessagesByWorkspace :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where workspace_id = ?1
+order by ts desc
+limit ?2
+`
+
+type ListMessagesByWorkspaceParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	Limit       int64  `json:"limit"`
+}
+
+type ListMessagesByWorkspaceRow struct {
+	WorkspaceID    string `json:"workspace_id"`
+	ChannelID      string `json:"channel_id"`
+	Ts             string `json:"ts"`
+	UserID         string `json:"user_id"`
+	Text           string `json:"text"`
+	NormalizedText string `json:"normalized_text"`
+	ThreadTs       string `json:"thread_ts"`
+	Subtype        string `json:"subtype"`
+}
+
+func (q *Queries) ListMessagesByWorkspace(ctx context.Context, arg ListMessagesByWorkspaceParams) ([]ListMessagesByWorkspaceRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesByWorkspace, arg.WorkspaceID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMessagesByWorkspaceRow
+	for rows.Next() {
+		var i ListMessagesByWorkspaceRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.ChannelID,
+			&i.Ts,
+			&i.UserID,
+			&i.Text,
+			&i.NormalizedText,
+			&i.ThreadTs,
+			&i.Subtype,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessagesByWorkspaceChannel = `-- name: ListMessagesByWorkspaceChannel :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where workspace_id = ?1
+  and channel_id = ?2
+order by ts desc
+limit ?3
+`
+
+type ListMessagesByWorkspaceChannelParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	ChannelID   string `json:"channel_id"`
+	Limit       int64  `json:"limit"`
+}
+
+type ListMessagesByWorkspaceChannelRow struct {
+	WorkspaceID    string `json:"workspace_id"`
+	ChannelID      string `json:"channel_id"`
+	Ts             string `json:"ts"`
+	UserID         string `json:"user_id"`
+	Text           string `json:"text"`
+	NormalizedText string `json:"normalized_text"`
+	ThreadTs       string `json:"thread_ts"`
+	Subtype        string `json:"subtype"`
+}
+
+func (q *Queries) ListMessagesByWorkspaceChannel(ctx context.Context, arg ListMessagesByWorkspaceChannelParams) ([]ListMessagesByWorkspaceChannelRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesByWorkspaceChannel, arg.WorkspaceID, arg.ChannelID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMessagesByWorkspaceChannelRow
+	for rows.Next() {
+		var i ListMessagesByWorkspaceChannelRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.ChannelID,
+			&i.Ts,
+			&i.UserID,
+			&i.Text,
+			&i.NormalizedText,
+			&i.ThreadTs,
+			&i.Subtype,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessagesByWorkspaceChannelUser = `-- name: ListMessagesByWorkspaceChannelUser :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where workspace_id = ?1
+  and channel_id = ?2
+  and user_id = ?3
+order by ts desc
+limit ?4
+`
+
+type ListMessagesByWorkspaceChannelUserParams struct {
+	WorkspaceID string         `json:"workspace_id"`
+	ChannelID   string         `json:"channel_id"`
+	UserID      sql.NullString `json:"user_id"`
+	Limit       int64          `json:"limit"`
+}
+
+type ListMessagesByWorkspaceChannelUserRow struct {
+	WorkspaceID    string `json:"workspace_id"`
+	ChannelID      string `json:"channel_id"`
+	Ts             string `json:"ts"`
+	UserID         string `json:"user_id"`
+	Text           string `json:"text"`
+	NormalizedText string `json:"normalized_text"`
+	ThreadTs       string `json:"thread_ts"`
+	Subtype        string `json:"subtype"`
+}
+
+func (q *Queries) ListMessagesByWorkspaceChannelUser(ctx context.Context, arg ListMessagesByWorkspaceChannelUserParams) ([]ListMessagesByWorkspaceChannelUserRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesByWorkspaceChannelUser,
 		arg.WorkspaceID,
 		arg.ChannelID,
 		arg.UserID,
@@ -342,9 +676,67 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]L
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListMessagesRow
+	var items []ListMessagesByWorkspaceChannelUserRow
 	for rows.Next() {
-		var i ListMessagesRow
+		var i ListMessagesByWorkspaceChannelUserRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.ChannelID,
+			&i.Ts,
+			&i.UserID,
+			&i.Text,
+			&i.NormalizedText,
+			&i.ThreadTs,
+			&i.Subtype,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessagesByWorkspaceUser = `-- name: ListMessagesByWorkspaceUser :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where workspace_id = ?1
+  and user_id = ?2
+order by ts desc
+limit ?3
+`
+
+type ListMessagesByWorkspaceUserParams struct {
+	WorkspaceID string         `json:"workspace_id"`
+	UserID      sql.NullString `json:"user_id"`
+	Limit       int64          `json:"limit"`
+}
+
+type ListMessagesByWorkspaceUserRow struct {
+	WorkspaceID    string `json:"workspace_id"`
+	ChannelID      string `json:"channel_id"`
+	Ts             string `json:"ts"`
+	UserID         string `json:"user_id"`
+	Text           string `json:"text"`
+	NormalizedText string `json:"normalized_text"`
+	ThreadTs       string `json:"thread_ts"`
+	Subtype        string `json:"subtype"`
+}
+
+func (q *Queries) ListMessagesByWorkspaceUser(ctx context.Context, arg ListMessagesByWorkspaceUserParams) ([]ListMessagesByWorkspaceUserRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesByWorkspaceUser, arg.WorkspaceID, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMessagesByWorkspaceUserRow
+	for rows.Next() {
+		var i ListMessagesByWorkspaceUserRow
 		if err := rows.Scan(
 			&i.WorkspaceID,
 			&i.ChannelID,

@@ -115,12 +115,63 @@ select cast(coalesce(max(updated_at), '') as text) as updated_at from sync_state
 -- name: ThreadCoverageState :one
 select value from sync_state where source_name = 'doctor' and entity_type = 'threads' and entity_id = 'coverage';
 
--- name: ListMessages :many
+-- name: ListMessagesAll :many
 select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
 from messages
-where (sqlc.arg(workspace_id) = '' or workspace_id = sqlc.arg(workspace_id))
-  and (sqlc.arg(channel_id) = '' or channel_id = sqlc.arg(channel_id))
-  and (sqlc.arg(user_id) = '' or user_id = sqlc.arg(user_id))
+order by ts desc
+limit sqlc.arg(limit);
+
+-- name: ListMessagesByWorkspace :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where workspace_id = sqlc.arg(workspace_id)
+order by ts desc
+limit sqlc.arg(limit);
+
+-- name: ListMessagesByChannel :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where channel_id = sqlc.arg(channel_id)
+order by ts desc
+limit sqlc.arg(limit);
+
+-- name: ListMessagesByUser :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where user_id = sqlc.arg(user_id)
+order by ts desc
+limit sqlc.arg(limit);
+
+-- name: ListMessagesByWorkspaceChannel :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where workspace_id = sqlc.arg(workspace_id)
+  and channel_id = sqlc.arg(channel_id)
+order by ts desc
+limit sqlc.arg(limit);
+
+-- name: ListMessagesByWorkspaceUser :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where workspace_id = sqlc.arg(workspace_id)
+  and user_id = sqlc.arg(user_id)
+order by ts desc
+limit sqlc.arg(limit);
+
+-- name: ListMessagesByChannelUser :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where channel_id = sqlc.arg(channel_id)
+  and user_id = sqlc.arg(user_id)
+order by ts desc
+limit sqlc.arg(limit);
+
+-- name: ListMessagesByWorkspaceChannelUser :many
+select workspace_id, channel_id, ts, coalesce(user_id, '') as user_id, text, normalized_text, coalesce(thread_ts, '') as thread_ts, coalesce(subtype, '') as subtype
+from messages
+where workspace_id = sqlc.arg(workspace_id)
+  and channel_id = sqlc.arg(channel_id)
+  and user_id = sqlc.arg(user_id)
 order by ts desc
 limit sqlc.arg(limit);
 
