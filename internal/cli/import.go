@@ -119,29 +119,11 @@ func runImportExecution(ctx context.Context, st *store.Store, ex *importer.Expor
 	now := time.Now().UTC()
 	report := ImportReport{Workspace: workspaceID, DryRun: dryRun}
 
-	if !dryRun {
-		if err := st.UpsertWorkspace(ctx, store.Workspace{
-			ID:        workspaceID,
-			Name:      workspaceID,
-			RawJSON:   store.MarshalRaw(map[string]any{"id": workspaceID, "source": slackExportSourceName}),
-			UpdatedAt: now,
-		}); err != nil {
-			return ImportReport{}, nil, err
-		}
-	}
-
 	users, err := ex.Users()
 	if err != nil {
 		return ImportReport{}, nil, err
 	}
 	report.Users = len(users)
-	if !dryRun {
-		for _, user := range users {
-			if err := st.UpsertUser(ctx, toStoreUser(workspaceID, user, now)); err != nil {
-				return ImportReport{}, nil, err
-			}
-		}
-	}
 
 	channels, err := ex.Channels()
 	if err != nil {
@@ -167,6 +149,22 @@ func runImportExecution(ctx context.Context, st *store.Store, ex *importer.Expor
 	allChannels = append(allChannels, mpims...)
 
 	if !dryRun {
+		if err := validateImportMessageKeys(ctx, st, ex, workspaceID, allChannels); err != nil {
+			return ImportReport{}, nil, err
+		}
+		if err := st.UpsertWorkspace(ctx, store.Workspace{
+			ID:        workspaceID,
+			Name:      workspaceID,
+			RawJSON:   store.MarshalRaw(map[string]any{"id": workspaceID, "source": slackExportSourceName}),
+			UpdatedAt: now,
+		}); err != nil {
+			return ImportReport{}, nil, err
+		}
+		for _, user := range users {
+			if err := st.UpsertUser(ctx, toStoreUser(workspaceID, user, now)); err != nil {
+				return ImportReport{}, nil, err
+			}
+		}
 		for _, channel := range allChannels {
 			if err := st.UpsertChannel(ctx, toStoreChannel(workspaceID, channel, now)); err != nil {
 				return ImportReport{}, nil, err
@@ -195,7 +193,7 @@ func runImportExecution(ctx context.Context, st *store.Store, ex *importer.Expor
 					report.Skipped++
 					continue
 				}
-				skip, err := shouldSkipMessage(ctx, st, message.ChannelID, message.TS, force)
+				skip, err := shouldSkipMessage(ctx, st, message.WorkspaceID, message.ChannelID, message.TS, force)
 				if err != nil {
 					return ImportReport{}, nil, err
 				}
@@ -223,12 +221,44 @@ func runImportExecution(ctx context.Context, st *store.Store, ex *importer.Expor
 	return report, progress, nil
 }
 
-func shouldSkipMessage(ctx context.Context, st *store.Store, channelID, ts string, force bool) (bool, error) {
-	rank, source, exists, err := existingMessageSource(ctx, st, channelID, ts)
+func validateImportMessageKeys(ctx context.Context, st *store.Store, ex *importer.Export, workspaceID string, channels []importer.ChannelInfo) error {
+	for _, channel := range channels {
+		candidates := []string{channel.Name}
+		if channel.ID != "" && channel.ID != channel.Name {
+			candidates = append(candidates, channel.ID)
+		}
+		for _, candidate := range candidates {
+			channelRows := 0
+			for env, iterErr := range ex.Messages(candidate) {
+				if iterErr != nil {
+					return iterErr
+				}
+				channelRows++
+				ts := stringValue(env.Raw["ts"])
+				if ts == "" {
+					continue
+				}
+				if err := rejectCrossWorkspaceMessageCollision(ctx, st, workspaceID, channel.ID, ts); err != nil {
+					return err
+				}
+			}
+			if channelRows > 0 {
+				break
+			}
+		}
+	}
+	return nil
+}
+
+func shouldSkipMessage(ctx context.Context, st *store.Store, workspaceID, channelID, ts string, force bool) (bool, error) {
+	rank, source, exists, err := existingMessageSource(ctx, st, workspaceID, channelID, ts)
 	if err != nil {
 		return false, err
 	}
 	if !exists {
+		if err := rejectCrossWorkspaceMessageCollision(ctx, st, workspaceID, channelID, ts); err != nil {
+			return false, err
+		}
 		return false, nil
 	}
 	if rank < slackExportSourceRank {
@@ -243,14 +273,41 @@ func shouldSkipMessage(ctx context.Context, st *store.Store, channelID, ts strin
 	return true, nil
 }
 
-func existingMessageSource(ctx context.Context, st *store.Store, channelID, ts string) (int, string, bool, error) {
+func rejectCrossWorkspaceMessageCollision(ctx context.Context, st *store.Store, workspaceID, channelID, ts string) error {
+	otherWorkspace, collision, err := existingMessageWorkspace(ctx, st, channelID, ts)
+	if err != nil {
+		return err
+	}
+	if collision && otherWorkspace != workspaceID {
+		return fmt.Errorf("message %s/%s already exists in workspace %s; cross-workspace channel/timestamp collisions are not supported", channelID, ts, otherWorkspace)
+	}
+	return nil
+}
+
+func existingMessageWorkspace(ctx context.Context, st *store.Store, channelID, ts string) (string, bool, error) {
+	var workspaceID string
+	err := st.DB().QueryRowContext(ctx, `
+select workspace_id
+from messages
+where channel_id = ? and ts = ?
+`, channelID, ts).Scan(&workspaceID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return workspaceID, true, nil
+}
+
+func existingMessageSource(ctx context.Context, st *store.Store, workspaceID, channelID, ts string) (int, string, bool, error) {
 	var rank int
 	var source string
 	err := st.DB().QueryRowContext(ctx, `
 select source_rank, source_name
 from messages
-where channel_id = ? and ts = ?
-`, channelID, ts).Scan(&rank, &source)
+where workspace_id = ? and channel_id = ? and ts = ?
+`, workspaceID, channelID, ts).Scan(&rank, &source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, "", false, nil
 	}

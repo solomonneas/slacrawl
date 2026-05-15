@@ -96,6 +96,57 @@ order by ts asc`)
 	require.NotContains(t, rows[4]["normalized_text"], "Hidden confirm")
 }
 
+func TestImportRejectsSameChannelTimestampInDifferentWorkspaces(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := filepath.Join(tmp, "config.toml")
+	dbPath := filepath.Join(tmp, "slacrawl.db")
+
+	var stdout bytes.Buffer
+	app := &App{Stdout: &stdout, Stderr: &stdout}
+	ctx := context.Background()
+	require.NoError(t, app.Run(ctx, []string{"--config", configPath, "init", "--db", dbPath}))
+
+	zipPath := writeImportFixtureZip(t, map[string]string{
+		"users.json":    `[{"id":"U1","name":"alice"}]`,
+		"channels.json": `[{"id":"C1","name":"general","is_private":false}]`,
+		"general/2026-01-01.json": `[
+			{"type":"message","user":"U1","text":"same ts different workspace","ts":"1735689600.000001"}
+		]`,
+	})
+
+	stdout.Reset()
+	require.NoError(t, app.Run(ctx, []string{"--config", configPath, "--json", "import", zipPath, "--workspace", "T1"}))
+	var first ImportReport
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &first))
+	require.Equal(t, 1, first.Messages)
+	require.Equal(t, 0, first.Skipped)
+
+	stdout.Reset()
+	err := app.Run(ctx, []string{"--config", configPath, "--json", "import", zipPath, "--workspace", "T2"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already exists in workspace T1")
+
+	st, err := store.Open(dbPath)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, st.Close()) }()
+
+	rows, err := st.QueryReadOnly(ctx, `
+select workspace_id, count(*) as messages
+from messages
+where channel_id = 'C1' and ts = '1735689600.000001'
+group by workspace_id
+order by workspace_id`)
+	require.NoError(t, err)
+	require.Equal(t, []map[string]any{{"workspace_id": "T1", "messages": int64(1)}}, rows)
+
+	rows, err = st.QueryReadOnly(ctx, `
+select workspace_id
+from channels
+where id = 'C1'`)
+	require.NoError(t, err)
+	require.Equal(t, []map[string]any{{"workspace_id": "T1"}}, rows)
+}
+
 func writeImportFixtureZip(t *testing.T, files map[string]string) string {
 	t.Helper()
 	var buf bytes.Buffer
