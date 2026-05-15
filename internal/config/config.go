@@ -204,6 +204,7 @@ func (c *Config) Normalize() error {
 		}
 		c.Workspaces[i].ID = strings.TrimSpace(c.Workspaces[i].ID)
 	}
+	c.WorkspaceID = strings.TrimSpace(c.WorkspaceID)
 	if c.WorkspaceID == "" {
 		c.WorkspaceID = c.DefaultWorkspaceID()
 	}

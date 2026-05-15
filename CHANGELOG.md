@@ -16,6 +16,7 @@
 - `analytics quiet` and `analytics trends` now reject unexpected positional arguments instead of ignoring them.
 - Digest reports now exclude messages after the advertised `until` timestamp.
 - Digest totals now count active authors per workspace when aggregating multiple workspaces.
+- Config normalization now trims explicit `workspace_id` values before workspace lookups.
 - Desktop ingest now removes temporary Slack snapshot copies after use and after snapshot setup errors.
 - Desktop draft ingest now preserves the workspace and user from Slack's local draft keys.
 - Slack export directory imports now reject traversal-style channel names before reading message files.

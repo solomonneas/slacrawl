@@ -134,6 +134,17 @@ func TestNormalizeSetsDefaultWorkspaceFromWorkspaceList(t *testing.T) {
 	require.Equal(t, []string{"T123", "T456"}, cfg.WorkspaceIDs())
 }
 
+func TestNormalizeTrimsExplicitWorkspaceID(t *testing.T) {
+	cfg := Default()
+	cfg.WorkspaceID = " T123 "
+	cfg.Workspaces = []Workspace{{ID: "T123"}}
+	require.NoError(t, cfg.Normalize())
+	require.Equal(t, "T123", cfg.WorkspaceID)
+
+	_, ok := cfg.Workspace(cfg.WorkspaceID)
+	require.True(t, ok)
+}
+
 func TestEnsureRuntimeDirsCreatesShareParent(t *testing.T) {
 	dir := t.TempDir()
 	cfg := Default()
