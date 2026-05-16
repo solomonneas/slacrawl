@@ -4,6 +4,8 @@
 
 - Bump routine Go module and GitHub Actions dependencies, including Go 1.26.3 for standard-library vulnerability fixes.
 
+- Bump `github.com/slack-go/slack` to v0.23.1 to address GHSA-gxhx-2686-5h9g.
+
 - Clarify in the public docs that future Slack file-blob backup must store Git-share media as gzip-compressed files, restore raw local cache files on import, and keep legacy raw-media import compatibility.
 
 - Add a repo-local `slacrawl` agent skill for local Slack archive, freshness,
