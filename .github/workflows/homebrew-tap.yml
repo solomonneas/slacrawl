@@ -40,7 +40,7 @@ jobs:
 
       - name: Checkout tap repository
         if: ${{ steps.tap-config.outputs.enabled == '1' }}
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: ${{ vars.HOMEBREW_TAP_REPO || 'vincentkoc/tap' }}
           token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
