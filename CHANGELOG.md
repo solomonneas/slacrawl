@@ -8,6 +8,8 @@
 
 ### Maintenance
 
+- Added immutable Git-share snapshot tags and non-mutating historical restores with `update --ref`, using CrawlKit for shared Git history mechanics.
+- Moved FTS5 query escaping onto CrawlKit and refreshed Go dependencies.
 - Updated crawlkit through 0.12.2 for shared runtime hardening, SQLite 1.52, and absolute Windows database paths.
 - Updated the pinned GoReleaser CI action to 7.2.2.
 - Updated the TruffleHog secret-scanning action to 3.95.6.
