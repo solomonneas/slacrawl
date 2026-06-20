@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 env:
-  TAP_REPO: ${{ vars.HOMEBREW_TAP_REPO || 'openclaw/homebrew-tap' }}
+  TAP_REPO: openclaw/homebrew-tap
   FORMULA: slacrawl
 
 jobs:
