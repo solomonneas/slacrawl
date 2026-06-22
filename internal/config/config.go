@@ -66,6 +66,7 @@ type MCPConfig struct {
 	BaseURL         string   `toml:"base_url"`
 	Command         string   `toml:"command"`
 	Args            []string `toml:"args"`
+	EnvAllowlist    []string `toml:"env_allowlist"`
 	AuthPath        string   `toml:"auth_path"`
 	TokenEnv        string   `toml:"token_env"`
 	AccountIDEnv    string   `toml:"account_id_env"`
@@ -241,6 +242,7 @@ func (c *Config) Normalize() error {
 	if c.Slack.MCP.Transport == "stdio" && strings.TrimSpace(c.Slack.MCP.Command) == "" {
 		return errors.New("slack.mcp.command is required for stdio transport")
 	}
+	c.Slack.MCP.EnvAllowlist = normalizeStringList(c.Slack.MCP.EnvAllowlist)
 	if c.Slack.MCP.AuthPath == "" {
 		c.Slack.MCP.AuthPath = defaults.AuthPath
 	}
@@ -295,6 +297,20 @@ func (c *Config) Normalize() error {
 		c.WorkspaceID = c.DefaultWorkspaceID()
 	}
 	return nil
+}
+
+func normalizeStringList(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
 }
 
 func ExpandPath(path string) (string, error) {

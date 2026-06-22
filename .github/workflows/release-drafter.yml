@@ -11,13 +11,15 @@ on:
       - ready_for_review
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   autolabel:
     if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Autolabel pull request
         uses: release-drafter/release-drafter/autolabeler@v7
@@ -27,6 +29,9 @@ jobs:
   update_release_draft:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Draft release notes
         uses: release-drafter/release-drafter@v7

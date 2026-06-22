@@ -18,6 +18,8 @@ import (
 type StdioOptions struct {
 	Command         string
 	Args            []string
+	Env             []string
+	EnvAllowlist    []string
 	ProtocolVersion string
 	ClientName      string
 	ClientVersion   string
@@ -63,7 +65,7 @@ func NewStdio(_ context.Context, opts StdioOptions) (*StdioClient, error) {
 		opts.ClientVersion = "dev"
 	}
 	cmd := exec.Command(opts.Command, opts.Args...)
-	cmd.Env = os.Environ()
+	cmd.Env = stdioEnvironment(opts)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("open MCP stdio input: %w", err)
@@ -99,6 +101,55 @@ func NewStdio(_ context.Context, opts StdioOptions) (*StdioClient, error) {
 		client.waitCh <- err
 	}()
 	return client, nil
+}
+
+func stdioEnvironment(opts StdioOptions) []string {
+	keys := append([]string{
+		"COMSPEC",
+		"HOME",
+		"LOGNAME",
+		"PATH",
+		"PATHEXT",
+		"SHELL",
+		"SYSTEMROOT",
+		"TEMP",
+		"TMP",
+		"TMPDIR",
+		"USER",
+		"USERNAME",
+		"WINDIR",
+	}, opts.EnvAllowlist...)
+	seen := make(map[string]int, len(keys))
+	env := make([]string, 0, len(keys)+len(opts.Env))
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		value, ok := os.LookupEnv(key)
+		if !ok {
+			continue
+		}
+		seen[key] = len(env)
+		env = append(env, key+"="+value)
+	}
+	for _, item := range opts.Env {
+		key, _, ok := strings.Cut(item, "=")
+		key = strings.TrimSpace(key)
+		if !ok || key == "" {
+			continue
+		}
+		if idx, ok := seen[key]; ok {
+			env[idx] = item
+			continue
+		}
+		seen[key] = len(env)
+		env = append(env, item)
+	}
+	return env
 }
 
 func (c *StdioClient) Initialize(ctx context.Context) error {

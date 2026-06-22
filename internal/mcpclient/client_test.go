@@ -72,6 +72,7 @@ func TestStdioClientInitializeListsToolsAndCallsTool(t *testing.T) {
 	client, err := NewStdio(context.Background(), StdioOptions{
 		Command: os.Args[0],
 		Args:    []string{"-test.run=TestMCPStdioHelperProcess"},
+		Env:     []string{"GO_WANT_MCP_STDIO_HELPER=1"},
 	})
 	require.NoError(t, err)
 	require.NoError(t, client.Initialize(context.Background()))
@@ -89,6 +90,7 @@ func TestStdioClientHandlesLargeOutputAndStderr(t *testing.T) {
 	client, err := NewStdio(context.Background(), StdioOptions{
 		Command: os.Args[0],
 		Args:    []string{"-test.run=TestMCPStdioHelperProcess"},
+		Env:     []string{"GO_WANT_MCP_STDIO_HELPER=1"},
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, client.Close()) }()
@@ -105,6 +107,7 @@ func TestStdioClientIgnoresLateCanceledResponse(t *testing.T) {
 	client, err := NewStdio(context.Background(), StdioOptions{
 		Command: os.Args[0],
 		Args:    []string{"-test.run=TestMCPStdioHelperProcess"},
+		Env:     []string{"GO_WANT_MCP_STDIO_HELPER=1"},
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, client.Close()) }()
@@ -119,6 +122,25 @@ func TestStdioClientIgnoresLateCanceledResponse(t *testing.T) {
 	text, err := client.CallToolText(context.Background(), "fast", nil)
 	require.NoError(t, err)
 	require.Equal(t, "ok", text)
+}
+
+func TestStdioClientUsesMinimalEnvironment(t *testing.T) {
+	t.Setenv("GO_WANT_MCP_STDIO_HELPER", "1")
+	t.Setenv("SLACRAWL_ALLOWED_ENV", "visible")
+	t.Setenv("SLACRAWL_FAKE_SECRET", "hidden")
+	client, err := NewStdio(context.Background(), StdioOptions{
+		Command:      os.Args[0],
+		Args:         []string{"-test.run=TestMCPStdioHelperProcess"},
+		Env:          []string{"GO_WANT_MCP_STDIO_HELPER=1"},
+		EnvAllowlist: []string{"SLACRAWL_ALLOWED_ENV"},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, client.Close()) }()
+	require.NoError(t, client.Initialize(context.Background()))
+
+	text, err := client.CallToolText(context.Background(), "env", nil)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"allowed":"visible","secret":""}`, text)
 }
 
 func TestMCPStdioHelperProcess(t *testing.T) {
@@ -158,6 +180,8 @@ func TestMCPStdioHelperProcess(t *testing.T) {
 				text = "late"
 			case "fast":
 				text = "ok"
+			case "env":
+				text = fmt.Sprintf(`{"allowed":%q,"secret":%q}`, os.Getenv("SLACRAWL_ALLOWED_ENV"), os.Getenv("SLACRAWL_FAKE_SECRET"))
 			default:
 				text = `{"ok":true}`
 			}

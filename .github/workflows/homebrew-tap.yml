@@ -75,8 +75,9 @@ jobs:
               --branch main \
               --event workflow_dispatch \
               --limit 20 \
-              --json databaseId,displayTitle \
-              --jq ".[] | select(.displayTitle == \"${expected_title}\") | .databaseId" | head -n1)
+              --json databaseId,displayTitle |
+              jq -r --arg title "${expected_title}" '.[] | select(.displayTitle == $title) | .databaseId' |
+              head -n1)
             if [ -n "${run_id}" ]; then
               break
             fi

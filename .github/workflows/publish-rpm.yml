@@ -16,9 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate Cloudsmith configuration
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${{ secrets.CLOUDSMITH_API_KEY }}" ]; then
+          if [ -z "${CLOUDSMITH_API_KEY}" ]; then
             echo "Secret CLOUDSMITH_API_KEY is required."
             exit 1
           fi
@@ -40,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install --upgrade pip
-          python3 -m pip install cloudsmith-cli
+          python3 -m pip install cloudsmith-cli==1.11.1
 
       - name: Publish to Cloudsmith RPM repository
         env:
@@ -50,10 +52,16 @@ jobs:
           CLOUDSMITH_RPM_RELEASE: ${{ vars.CLOUDSMITH_RPM_RELEASE }}
         run: |
           set -euo pipefail
+          shopt -s nullglob
+          packages=(dist/*.rpm)
+          if [ "${#packages[@]}" -eq 0 ]; then
+            echo "::error::No .rpm packages found in dist."
+            exit 1
+          fi
           DISTRO="${CLOUDSMITH_RPM_DISTRIBUTION:-el}"
           RELEASE="${CLOUDSMITH_RPM_RELEASE:-9}"
           TARGET="${CLOUDSMITH_REPO}/${DISTRO}/${RELEASE}"
 
-          for pkg in dist/*.rpm; do
+          for pkg in "${packages[@]}"; do
             cloudsmith push rpm "${TARGET}" "${pkg}" --no-wait-for-sync
           done

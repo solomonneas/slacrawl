@@ -125,6 +125,7 @@ func TestSaveAndLoadStdioMCPConfig(t *testing.T) {
 	cfg.Slack.MCP.Transport = "stdio"
 	cfg.Slack.MCP.Command = "npx"
 	cfg.Slack.MCP.Args = []string{"-y", "@modelcontextprotocol/server-slack"}
+	cfg.Slack.MCP.EnvAllowlist = []string{"SLACK_CUSTOM_TOKEN"}
 	require.NoError(t, cfg.Save(path))
 
 	loaded, err := Load(path)
@@ -132,6 +133,7 @@ func TestSaveAndLoadStdioMCPConfig(t *testing.T) {
 	require.Equal(t, "stdio", loaded.Slack.MCP.Transport)
 	require.Equal(t, "npx", loaded.Slack.MCP.Command)
 	require.Equal(t, []string{"-y", "@modelcontextprotocol/server-slack"}, loaded.Slack.MCP.Args)
+	require.Equal(t, []string{"SLACK_CUSTOM_TOKEN"}, loaded.Slack.MCP.EnvAllowlist)
 }
 
 func TestNormalizeRejectsStdioMCPWithoutCommand(t *testing.T) {

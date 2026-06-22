@@ -4,8 +4,7 @@ COMPLETION_DIR ?= dist/completions
 .PHONY: build test fmt run generate-sqlc completion completion-bash completion-zsh clean
 
 build:
-	mkdir -p $(dir $(BINARY))
-	go build -o $(BINARY) ./cmd/slacrawl
+	binary="$(BINARY)"; mkdir -p "$$(dirname -- "$$binary")"; go build -o "$$binary" ./cmd/slacrawl
 
 test:
 	go test ./...
@@ -22,14 +21,13 @@ generate-sqlc:
 completion: completion-bash completion-zsh
 
 completion-bash:
-	mkdir -p $(COMPLETION_DIR)
-	go run ./cmd/slacrawl completion bash > $(COMPLETION_DIR)/slacrawl.bash
+	mkdir -p "$(COMPLETION_DIR)"
+	go run ./cmd/slacrawl completion bash > "$(COMPLETION_DIR)/slacrawl.bash"
 
 completion-zsh:
-	mkdir -p $(COMPLETION_DIR)
-	go run ./cmd/slacrawl completion zsh > $(COMPLETION_DIR)/_slacrawl
+	mkdir -p "$(COMPLETION_DIR)"
+	go run ./cmd/slacrawl completion zsh > "$(COMPLETION_DIR)/_slacrawl"
 
 clean:
-	rm -rf -- "$(BINARY)" "$(COMPLETION_DIR)"
-	[ "$(BINARY)" != "bin/slacrawl" ] || rm -rf bin
-	[ "$(COMPLETION_DIR)" != "dist/completions" ] || rm -rf dist
+	rm -f -- "$(BINARY)"
+	rm -rf -- "$(COMPLETION_DIR)"

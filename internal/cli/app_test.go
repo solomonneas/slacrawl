@@ -526,6 +526,10 @@ func TestCompletionBashOutput(t *testing.T) {
 	require.Contains(t, out, "complete -F _slacrawl slacrawl")
 	require.Contains(t, out, "completion")
 	require.Contains(t, out, "report")
+	require.Contains(t, out, "version")
+	require.Contains(t, out, "check-update")
+	require.Contains(t, out, "metadata")
+	require.Contains(t, out, "tui")
 	require.Contains(t, out, "--format")
 	require.Contains(t, out, "--kind")
 	require.Contains(t, out, "wiretap")
@@ -535,6 +539,7 @@ func TestCompletionBashOutput(t *testing.T) {
 	require.Contains(t, out, "--older-than")
 	require.Contains(t, out, "--tag")
 	require.Contains(t, out, "--ref")
+	require.Contains(t, out, "--max-bytes")
 }
 
 func TestCompletionZshOutput(t *testing.T) {
@@ -550,6 +555,10 @@ func TestCompletionZshOutput(t *testing.T) {
 	require.Contains(t, out, "#compdef slacrawl")
 	require.Contains(t, out, "_values 'shell' bash zsh")
 	require.Contains(t, out, "report")
+	require.Contains(t, out, `"version:version command"`)
+	require.Contains(t, out, `"check-update:check-update command"`)
+	require.Contains(t, out, `"metadata:metadata command"`)
+	require.Contains(t, out, `"tui:tui command"`)
 	require.Contains(t, out, "--no-color")
 	require.Contains(t, out, "public_channel")
 	require.Contains(t, out, "wiretap")

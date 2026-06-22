@@ -88,6 +88,7 @@ func New(ctx context.Context, cfg config.MCPConfig, httpClient *http.Client) (*C
 		mcp, err = mcpclient.NewStdio(ctx, mcpclient.StdioOptions{
 			Command:         cfg.Command,
 			Args:            cfg.Args,
+			EnvAllowlist:    stdioEnvAllowlist(cfg),
 			ProtocolVersion: cfg.ProtocolVersion,
 			ClientName:      "slacrawl",
 			ClientVersion:   "dev",
@@ -111,6 +112,31 @@ func New(ctx context.Context, cfg config.MCPConfig, httpClient *http.Client) (*C
 		return nil, err
 	}
 	return client, nil
+}
+
+func stdioEnvAllowlist(cfg config.MCPConfig) []string {
+	keys := []string{
+		"CODEX_APPS_ACCESS_TOKEN",
+		"CODEX_APPS_ACCOUNT_ID",
+		"CODEX_CONNECTORS_TOKEN",
+		"SLACK_APP_TOKEN",
+		"SLACK_BOT_TOKEN",
+		"SLACK_USER_TOKEN",
+		cfg.TokenEnv,
+		cfg.AccountIDEnv,
+	}
+	keys = append(keys, cfg.EnvAllowlist...)
+	out := make([]string, 0, len(keys))
+	seen := map[string]bool{}
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, key)
+	}
+	return out
 }
 
 func (c *Client) Close() error { return c.mcp.Close() }

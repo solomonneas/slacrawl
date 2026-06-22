@@ -47,10 +47,15 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
-          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" 2>/dev/null || true)"
+          release_json_file="$(mktemp)"
           asset_count="0"
-          if [ -n "${release_json}" ]; then
+          if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" > "${release_json_file}" 2>&1; then
+            release_json="$(cat "${release_json_file}")"
             asset_count="$(printf '%s' "${release_json}" | jq -r '(.assets // []) | length')"
+          elif ! grep -q "HTTP 404" "${release_json_file}"; then
+            cat "${release_json_file}" >&2
+            echo "::error::Could not inspect existing release ${RELEASE_TAG}; refusing to republish blindly."
+            exit 1
           fi
           if [ "${asset_count}" != "0" ]; then
             echo "::error::Release ${RELEASE_TAG} already has ${asset_count} assets. Delete existing assets before republishing, or rerun with skip_publish=true to validate only."
@@ -98,7 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install --upgrade pip
-          python3 -m pip install cloudsmith-cli
+          python3 -m pip install cloudsmith-cli==1.11.1
 
       - name: Publish APT packages to Cloudsmith
         if: ${{ env.CLOUDSMITH_ENABLED == '1' && env.RELEASE_SKIP_PUBLISH != '1' }}
@@ -110,7 +115,13 @@ jobs:
           CLOUDSMITH_RELEASE: ${{ vars.CLOUDSMITH_RELEASE }}
         run: |
           set -euo pipefail
+          shopt -s nullglob
           APT_TARGETS="${CLOUDSMITH_APT_TARGETS:-}"
+          packages=(dist/*.deb)
+          if [ "${#packages[@]}" -eq 0 ]; then
+            echo "::warning::No .deb packages found; skipping Cloudsmith APT publish."
+            exit 0
+          fi
 
           if [ -z "${APT_TARGETS}" ]; then
             if [ -n "${CLOUDSMITH_DISTRIBUTION:-}" ] && [ -n "${CLOUDSMITH_RELEASE:-}" ]; then
@@ -123,7 +134,7 @@ jobs:
           for target_path in $(printf '%s' "${APT_TARGETS}" | tr ',' ' '); do
             [ -z "${target_path}" ] && continue
             TARGET="${CLOUDSMITH_REPO}/${target_path}"
-            for pkg in dist/*.deb; do
+            for pkg in "${packages[@]}"; do
               cloudsmith push deb "${TARGET}" "${pkg}" --no-wait-for-sync
             done
           done
@@ -137,11 +148,17 @@ jobs:
           CLOUDSMITH_RPM_RELEASE: ${{ vars.CLOUDSMITH_RPM_RELEASE }}
         run: |
           set -euo pipefail
+          shopt -s nullglob
+          packages=(dist/*.rpm)
+          if [ "${#packages[@]}" -eq 0 ]; then
+            echo "::warning::No .rpm packages found; skipping Cloudsmith RPM publish."
+            exit 0
+          fi
           DISTRO="${CLOUDSMITH_RPM_DISTRIBUTION:-el}"
           RELEASE="${CLOUDSMITH_RPM_RELEASE:-9}"
           TARGET="${CLOUDSMITH_REPO}/${DISTRO}/${RELEASE}"
 
-          for pkg in dist/*.rpm; do
+          for pkg in "${packages[@]}"; do
             cloudsmith push rpm "${TARGET}" "${pkg}" --no-wait-for-sync
           done
 

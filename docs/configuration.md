@@ -174,12 +174,13 @@ enabled = true
 transport = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-slack"]
+env_allowlist = ["SLACK_BOT_TOKEN"]
 page_size = 100
 search_limit = 100
 max_pages = 250
 ```
 
-The subprocess inherits the current environment; secrets are not passed through TOML fields. The reference server exposes public or explicitly configured channels and does not paginate channel history. Therefore each sync imports only the latest `page_size` messages returned by `slack_get_channel_history`; `--since` filters that fetched window locally and `--full` cannot extend the server's history window. Channel and user listing still paginate normally. The npm package is deprecated and its upstream repository is archived, but this adapter supports its published tool contract.
+The subprocess receives a minimal environment plus known Slack/Codex token variables and any names listed in `env_allowlist`; secrets are not passed through TOML fields. The reference server exposes public or explicitly configured channels and does not paginate channel history. Therefore each sync imports only the latest `page_size` messages returned by `slack_get_channel_history`; `--since` filters that fetched window locally and `--full` cannot extend the server's history window. Channel and user listing still paginate normally. The npm package is deprecated and its upstream repository is archived, but this adapter supports its published tool contract.
 
 Tool discovery selects either the Codex Slack connector contract or the reference `slack_list_channels`, `slack_get_channel_history`, `slack_get_thread_replies`, and `slack_get_users` contract.
 

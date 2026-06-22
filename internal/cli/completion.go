@@ -10,6 +10,9 @@ import (
 var (
 	commandNames = []string{
 		"init",
+		"version",
+		"check-update",
+		"metadata",
 		"doctor",
 		"report",
 		"digest",
@@ -22,6 +25,7 @@ var (
 		"purge",
 		"tail",
 		"watch",
+		"tui",
 		"search",
 		"messages",
 		"files",
@@ -85,7 +89,7 @@ _slacrawl()
     local i
     for ((i=1; i < ${#words[@]}; i++)); do
         case "${words[i]}" in
-            init|doctor|report|digest|analytics|publish|subscribe|update|sync|import|purge|tail|watch|search|messages|files|mentions|sql|users|channels|status|completion)
+            init|version|check-update|metadata|doctor|report|digest|analytics|publish|subscribe|update|sync|import|purge|tail|watch|tui|search|messages|files|mentions|sql|users|channels|status|completion)
                 command="${words[i]}"
                 break
                 ;;
@@ -118,6 +122,15 @@ _slacrawl()
     case "${command}" in
         init)
             COMPREPLY=( $(compgen -W "--workspace --db --help -h ${global_flags}" -- "${cur}") )
+            ;;
+        version)
+            COMPREPLY=( $(compgen -W "--help -h ${global_flags}" -- "${cur}") )
+            ;;
+        check-update)
+            COMPREPLY=( $(compgen -W "--json --help -h ${global_flags}" -- "${cur}") )
+            ;;
+        metadata)
+            COMPREPLY=( $(compgen -W "--json --help -h ${global_flags}" -- "${cur}") )
             ;;
         doctor)
             COMPREPLY=( $(compgen -W "--help -h ${global_flags}" -- "${cur}") )
@@ -177,6 +190,9 @@ _slacrawl()
         watch)
             COMPREPLY=( $(compgen -W "--desktop-every --help -h ${global_flags}" -- "${cur}") )
             ;;
+        tui)
+            COMPREPLY=( $(compgen -W "--json --limit --help -h ${global_flags}" -- "${cur}") )
+            ;;
         search)
             COMPREPLY=( $(compgen -W "--workspace --help -h ${global_flags}" -- "${cur}") )
             ;;
@@ -184,7 +200,14 @@ _slacrawl()
             COMPREPLY=( $(compgen -W "--workspace --channel --author --limit --help -h ${global_flags}" -- "${cur}") )
             ;;
         files)
-            if [[ "${words[i+1]}" == "fetch" || "${prev}" == "fetch" ]]; then
+            local files_subcommand=""
+            for ((i=2; i < ${#words[@]}; i++)); do
+                if [[ "${words[i]}" == "fetch" ]]; then
+                    files_subcommand="fetch"
+                    break
+                fi
+            done
+            if [[ "${files_subcommand}" == "fetch" ]]; then
                 COMPREPLY=( $(compgen -W "--workspace --channel --user --file --filename --type --since --before --missing --limit --all --force --max-bytes --help -h ${global_flags}" -- "${cur}") )
             else
                 COMPREPLY=( $(compgen -W "fetch --workspace --channel --user --file --filename --type --since --before --missing --limit --all --help -h ${global_flags}" -- "${cur}") )
@@ -246,6 +269,15 @@ _slacrawl() {
         init)
           _arguments '--workspace[workspace id]:workspace id:' '--db[database path]:database path:_files'
           ;;
+        version)
+          _arguments '--help[show help]'
+          ;;
+        check-update)
+          _arguments '--json[json output]' '--help[show help]'
+          ;;
+        metadata)
+          _arguments '--json[write crawlkit metadata JSON]' '--help[show help]'
+          ;;
         report)
           _arguments '--help[show help]'
           ;;
@@ -295,6 +327,9 @@ _slacrawl() {
           ;;
         watch)
           _arguments '--desktop-every[desktop refresh interval]:duration:'
+          ;;
+        tui)
+          _arguments '--json[json output]' '--limit[row limit]:limit:'
           ;;
         search)
           _arguments '--workspace[workspace id]:workspace id:'
