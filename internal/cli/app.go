@@ -154,6 +154,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.runUsers(ctx, configPath, rest[1:], outputFormat)
 	case "channels":
 		return a.runChannels(ctx, configPath, rest[1:], outputFormat)
+	case "export":
+		return a.runExport(ctx, configPath, rest[1:])
 	case "completion":
 		return a.runCompletion(rest[1:])
 	case "tail":
